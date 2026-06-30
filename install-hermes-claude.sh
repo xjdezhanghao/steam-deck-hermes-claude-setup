@@ -162,8 +162,18 @@ echo "=== 7. 安装 fnm ==="
 if [ -x "$FNM_PATH/fnm" ]; then
     info "fnm 已存在：$FNM_PATH/fnm"
 else
-    info "开始安装 fnm..."
-    curl -fsSL https://fnm.vercel.app/install | bash -s -- --skip-shell
+    info "开始安装 fnm（强制安装到 $FNM_PATH）..."
+    # 显式指定 --install-dir，避免 fnm 安装脚本按平台变化把二进制放到别处
+    # 导致 start-hermes-dashboard.sh 找不到
+    curl -fsSL https://fnm.vercel.app/install | \
+        bash -s -- --skip-shell --install-dir "$FNM_PATH"
+fi
+
+if [ -x "$FNM_PATH/fnm" ]; then
+    info "fnm 实际路径：$FNM_PATH/fnm"
+else
+    warn "fnm 二进制不在 $FNM_PATH，下面列出可能的位置："
+    find "$USER_HOME" -maxdepth 5 -name fnm -type f 2>/dev/null | head -5 || true
 fi
 echo ""
 

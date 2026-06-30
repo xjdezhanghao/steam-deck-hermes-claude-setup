@@ -25,12 +25,29 @@ warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 err()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
 # ──────────────────────────────────────
-# 0. 主动加载 fnm / ~/.local/bin
+# 0. 主动加载 fnm / node / ~/.local/bin
 # （bash 脚本是非交互式 shell，不会自动 source ~/.bashrc，
 #  如果不手动加载，已经装好的 fnm/node/hermes 也会被判成"未安装"）
 # ──────────────────────────────────────
-[ -d "$FNM_PATH" ] && export PATH="$FNM_PATH:$PATH"
-[ -d "$LOCAL_BIN" ] && export PATH="$LOCAL_BIN:$PATH"
+
+# 兜底搜常见的 fnm / node 安装位置
+for p in \
+    "$FNM_PATH" \
+    "$USER_HOME/.fnm" \
+    "$USER_HOME/.cargo/bin" \
+    "$LOCAL_BIN" \
+    "/usr/local/bin"
+do
+    [ -d "$p" ] && export PATH="$p:$PATH"
+done
+
+# 强制 source 一次 ~/.bashrc，把里面写过的 PATH/fnm env 全部生效
+# （bash 脚本里默认会因为 [ -z "$PS1" ] && return 提前退出，
+#   这里用 BASH_ENV 的等价做法：临时绕过 PS1 检查）
+if [ -f "$USER_HOME/.bashrc" ]; then
+    # shellcheck disable=SC1090
+    PS1='$ ' . "$USER_HOME/.bashrc" >/dev/null 2>&1 || true
+fi
 
 if command -v fnm >/dev/null 2>&1; then
     eval "$(fnm env --use-on-cd --shell bash 2>/dev/null)" || true
@@ -71,9 +88,22 @@ fi
 
 if [ "$MISSING_PREREQ" = true ]; then
     echo ""
-    echo "如果你确认已经装过 install-hermes-claude.sh，请先在当前终端执行："
-    echo "    source ~/.bashrc"
-    echo "再重新运行本脚本。"
+    echo "─── 诊断信息（请把以下内容贴出来排查）───"
+    echo "PATH = $PATH"
+    echo ""
+    echo "查找 fnm 可能位置："
+    ls -la "$FNM_PATH/fnm" 2>/dev/null || echo "  $FNM_PATH/fnm 不存在"
+    ls -la "$USER_HOME/.fnm/fnm" 2>/dev/null || echo "  $USER_HOME/.fnm/fnm 不存在"
+    ls -la "$LOCAL_BIN/fnm" 2>/dev/null || echo "  $LOCAL_BIN/fnm 不存在"
+    echo ""
+    echo "查找 node 可能位置："
+    ls -la /usr/bin/node 2>/dev/null || echo "  /usr/bin/node 不存在"
+    ls -la /usr/local/bin/node 2>/dev/null || echo "  /usr/local/bin/node 不存在"
+    find "$USER_HOME/.local" -maxdepth 6 -name node -type f 2>/dev/null | head -5
+    echo ""
+    echo "交互式终端里跑 'which fnm; which node' 看到的路径是？"
+    echo "把上面输出贴给我可以定位问题。"
+    echo "──────────────────────────────────────────"
     echo ""
     err "缺少前置依赖。请先运行 install-hermes-claude.sh，完成后再执行本脚本。"
 fi
