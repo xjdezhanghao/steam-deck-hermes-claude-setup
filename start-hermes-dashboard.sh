@@ -11,6 +11,9 @@ USER_HOME="$HOME"
 HERMES_HOME="${XDG_DATA_HOME:-$USER_HOME/.hermes}"
 HERMES_VENV="$HERMES_HOME/hermes-agent/venv"
 
+FNM_PATH="$USER_HOME/.local/share/fnm"
+LOCAL_BIN="$USER_HOME/.local/bin"
+
 # ─── 颜色 ───
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -22,6 +25,20 @@ warn()  { echo -e "${YELLOW}[!]${NC} $1"; }
 err()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
 # ──────────────────────────────────────
+# 0. 主动加载 fnm / ~/.local/bin
+# （bash 脚本是非交互式 shell，不会自动 source ~/.bashrc，
+#  如果不手动加载，已经装好的 fnm/node/hermes 也会被判成"未安装"）
+# ──────────────────────────────────────
+[ -d "$FNM_PATH" ] && export PATH="$FNM_PATH:$PATH"
+[ -d "$LOCAL_BIN" ] && export PATH="$LOCAL_BIN:$PATH"
+
+if command -v fnm >/dev/null 2>&1; then
+    eval "$(fnm env --use-on-cd --shell bash 2>/dev/null)" || true
+fi
+
+hash -r
+
+# ──────────────────────────────────────
 # 1. 前置校验：确认 install-hermes-claude.sh 已经跑过
 # ──────────────────────────────────────
 echo "=== 1. 前置校验 ==="
@@ -29,14 +46,14 @@ echo "=== 1. 前置校验 ==="
 MISSING_PREREQ=false
 
 if ! command -v fnm >/dev/null 2>&1; then
-    warn "fnm 未安装（install-hermes-claude.sh 应该先装它）"
+    warn "fnm 未安装或不在 PATH（应该在 $FNM_PATH）"
     MISSING_PREREQ=true
 else
     info "fnm: $(fnm --version 2>/dev/null || echo '已安装')"
 fi
 
 if ! command -v node >/dev/null 2>&1; then
-    warn "node 未安装"
+    warn "node 未安装（fnm 已装但未 fnm use <version>？）"
     MISSING_PREREQ=true
 else
     info "node: $(node -v)"
@@ -53,6 +70,10 @@ else
 fi
 
 if [ "$MISSING_PREREQ" = true ]; then
+    echo ""
+    echo "如果你确认已经装过 install-hermes-claude.sh，请先在当前终端执行："
+    echo "    source ~/.bashrc"
+    echo "再重新运行本脚本。"
     echo ""
     err "缺少前置依赖。请先运行 install-hermes-claude.sh，完成后再执行本脚本。"
 fi
