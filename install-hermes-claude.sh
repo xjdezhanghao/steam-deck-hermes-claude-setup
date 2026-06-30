@@ -232,15 +232,49 @@ echo ""
 echo "=== 8. 加载 fnm ==="
 
 export PATH="$FNM_PATH:$PATH"
+hash -r
 
 if ! command -v fnm >/dev/null 2>&1; then
+    warn "PATH 里没找到 fnm，当前 PATH："
+    echo "$PATH" | tr ':' '\n' | sed 's/^/  /'
+    warn "$FNM_PATH 下的内容："
+    ls -la "$FNM_PATH" 2>/dev/null || echo "  目录不存在"
     err "fnm 安装后仍然找不到。"
 fi
 
-eval "$(fnm env --use-on-cd --shell bash)"
-
 info "fnm 路径：$(command -v fnm)"
+
+# 先单独验证 fnm 二进制本身能跑（防止架构错配 / 缺动态库 / 损坏）
+if ! fnm --version >/dev/null 2>&1; then
+    warn "fnm 二进制无法执行，可能架构错配或损坏。诊断："
+    file "$(command -v fnm)" 2>/dev/null || true
+    fnm --version 2>&1 | head -5 || true
+    err "fnm 二进制不可用。删掉 $FNM_PATH 后重跑本脚本，或检查架构（uname -m: $(uname -m)）。"
+fi
 info "fnm 版本：$(fnm --version)"
+
+# fnm env 可能因为找不到 XDG 目录等失败；用 set +e 隔离
+set +e
+FNM_ENV_OUT="$(fnm env --use-on-cd --shell bash 2>&1)"
+FNM_ENV_RC=$?
+set -e
+
+if [ $FNM_ENV_RC -ne 0 ]; then
+    warn "fnm env 报错（exit=$FNM_ENV_RC）："
+    echo "$FNM_ENV_OUT" | sed 's/^/  /'
+    warn "尝试用最小参数重试..."
+    set +e
+    FNM_ENV_OUT="$(fnm env --shell bash 2>&1)"
+    FNM_ENV_RC=$?
+    set -e
+    if [ $FNM_ENV_RC -ne 0 ]; then
+        echo "$FNM_ENV_OUT" | sed 's/^/  /'
+        err "fnm env 持续失败。检查 \$XDG_DATA_HOME / \$HOME 权限。"
+    fi
+fi
+
+eval "$FNM_ENV_OUT"
+info "fnm 环境已加载"
 echo ""
 
 # ──────────────────────────────────────
