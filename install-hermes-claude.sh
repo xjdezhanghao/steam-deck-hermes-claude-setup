@@ -207,7 +207,8 @@ else
     info "未检测到 Hermes，开始安装。"
 fi
 
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup
+# curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-setup
 
 export PATH="$LOCAL_BIN:$PATH"
 hash -r
