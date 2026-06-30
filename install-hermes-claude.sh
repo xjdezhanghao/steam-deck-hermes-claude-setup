@@ -292,14 +292,20 @@ install_hermes_via_url() {
     return $rc
 }
 
+# 主源：Nous Research 官方域名
+HERMES_PRIMARY="https://hermes-agent.nousresearch.com/install.sh"
+# 兜底源：GitHub raw + 镜像
 HERMES_RAW="https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh"
-if ! install_hermes_via_url "$HERMES_RAW"; then
-    warn "官方 raw.githubusercontent.com 拉取失败，切换镜像重试..."
-    HERMES_MIRROR="${GH_MIRROR:-https://ghproxy.com/}"
-    if ! install_hermes_via_url "${HERMES_MIRROR}${HERMES_RAW}"; then
-        # 再换一个镜像
-        if ! install_hermes_via_url "https://mirror.ghproxy.com/${HERMES_RAW}"; then
-            err "Hermes 安装脚本下载失败（官方 + 镜像都失败）。可手动设置 GH_MIRROR 后重试。"
+
+if ! install_hermes_via_url "$HERMES_PRIMARY"; then
+    warn "$HERMES_PRIMARY 拉取失败，切换 GitHub raw 重试..."
+    if ! install_hermes_via_url "$HERMES_RAW"; then
+        warn "raw.githubusercontent.com 也失败，切换镜像重试..."
+        HERMES_MIRROR="${GH_MIRROR:-https://ghproxy.com/}"
+        if ! install_hermes_via_url "${HERMES_MIRROR}${HERMES_RAW}"; then
+            if ! install_hermes_via_url "https://mirror.ghproxy.com/${HERMES_RAW}"; then
+                err "Hermes 安装脚本下载失败（官方 + 镜像都失败）。可手动设置 GH_MIRROR 后重试。"
+            fi
         fi
     fi
 fi
