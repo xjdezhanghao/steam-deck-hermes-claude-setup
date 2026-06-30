@@ -162,6 +162,77 @@ fi
 echo ""
 
 # ──────────────────────────────────────
+# 3.5 编译 Web 前端（首次运行需要）
+# ──────────────────────────────────────
+echo "=== 3.5 编译 Web 前端 ==="
+
+# 找 fnm 的 default node bin 目录（稳定路径，不会随 shell 变化）
+NODE_BIN_DIR=""
+if [ -d "$FNM_PATH/aliases/default/bin" ]; then
+    NODE_BIN_DIR="$FNM_PATH/aliases/default/bin"
+elif command -v node >/dev/null 2>&1; then
+    NODE_BIN_DIR="$(dirname "$(command -v node)")"
+fi
+
+if [ -n "$NODE_BIN_DIR" ] && [ -x "$NODE_BIN_DIR/node" ]; then
+    info "Node bin 目录: $NODE_BIN_DIR"
+    export PATH="$NODE_BIN_DIR:$PATH"
+else
+    warn "找不到 node 可执行文件，systemd 服务将无法启动 dashboard"
+fi
+
+# 找 hermes-agent 的 web 目录（前端源码所在）
+HERMES_WEB_DIR=""
+for candidate in \
+    "$HERMES_HOME/hermes-agent/web" \
+    "$USER_HOME/.hermes/hermes-agent/web"
+do
+    if [ -d "$candidate" ] && [ -f "$candidate/package.json" ]; then
+        HERMES_WEB_DIR="$candidate"
+        break
+    fi
+done
+
+# 兜底：用 python 让 hermes 自己说它的安装路径
+if [ -z "$HERMES_WEB_DIR" ] && [ -x "$HERMES_VENV/bin/python" ]; then
+    HERMES_PKG_DIR="$("$HERMES_VENV/bin/python" -c \
+        'import hermes_agent, os; print(os.path.dirname(hermes_agent.__file__))' \
+        2>/dev/null || true)"
+    if [ -n "$HERMES_PKG_DIR" ]; then
+        for c in "$HERMES_PKG_DIR/web" "$HERMES_PKG_DIR/../web"; do
+            if [ -d "$c" ] && [ -f "$c/package.json" ]; then
+                HERMES_WEB_DIR="$(readlink -f "$c")"
+                break
+            fi
+        done
+    fi
+fi
+
+if [ -z "$HERMES_WEB_DIR" ]; then
+    warn "找不到 Hermes 的 web 目录，跳过前端构建。"
+    warn "如果 dashboard 报 'Web UI frontend not built'，请手动定位并执行："
+    warn "  cd <hermes-web-dir> && npm install && npm run build"
+elif [ -d "$HERMES_WEB_DIR/dist" ] || [ -d "$HERMES_WEB_DIR/build" ]; then
+    info "前端已构建（检测到 dist/build 目录），跳过。"
+    info "  目录: $HERMES_WEB_DIR"
+else
+    info "前端未构建，开始构建：$HERMES_WEB_DIR"
+    if [ -z "$NODE_BIN_DIR" ] || [ ! -x "$NODE_BIN_DIR/npm" ]; then
+        err "需要 npm 但找不到。请检查 fnm + Node 是否正确安装。"
+    fi
+    (
+        cd "$HERMES_WEB_DIR"
+        info "运行 npm install..."
+        npm install
+        info "运行 npm run build..."
+        npm run build
+    ) || err "前端构建失败。手动执行：cd $HERMES_WEB_DIR && npm install && npm run build"
+    info "前端构建完成"
+fi
+
+echo ""
+
+# ──────────────────────────────────────
 # 4. 检查端口占用
 # ──────────────────────────────────────
 echo "=== 4. 检查端口 ==="
@@ -237,8 +308,10 @@ echo "=== 6. 创建 systemd 服务 ==="
 SYSTEMD_DIR="$USER_HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_DIR"
 
-# 构建 PATH：venv 优先 + 系统路径 + fnm/local/bin
-SERVICE_PATH="$HERMES_VENV/bin:$USER_HOME/.local/share/fnm:$USER_HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+# 构建 PATH：venv + fnm node bin + ~/.local/bin + 系统路径
+SERVICE_PATH="$HERMES_VENV/bin"
+[ -n "$NODE_BIN_DIR" ] && SERVICE_PATH="$SERVICE_PATH:$NODE_BIN_DIR"
+SERVICE_PATH="$SERVICE_PATH:$USER_HOME/.local/share/fnm:$USER_HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 cat > "$SYSTEMD_DIR/hermes-dashboard.service" << EOF
 [Unit]
