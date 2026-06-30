@@ -159,14 +159,62 @@ echo ""
 # ──────────────────────────────────────
 echo "=== 7. 安装 fnm ==="
 
+install_fnm_from_github() {
+    # 直接从 GitHub Releases 下载预编译二进制，规避 fnm.vercel.app 的访问问题
+    # 可通过环境变量 GH_MIRROR 指定镜像前缀，例如：
+    #   GH_MIRROR=https://ghproxy.com/ ./install-hermes-claude.sh
+    #   GH_MIRROR=https://mirror.ghproxy.com/
+    local mirror="${GH_MIRROR:-}"
+    local arch
+    case "$(uname -m)" in
+        x86_64)  arch="fnm-linux.zip" ;;
+        aarch64) arch="fnm-arm64.zip" ;;
+        armv7l)  arch="fnm-arm32.zip" ;;
+        *) warn "未知架构 $(uname -m)，无法下载 fnm 二进制"; return 1 ;;
+    esac
+    local url="${mirror}https://github.com/Schniz/fnm/releases/latest/download/${arch}"
+    info "回退：从 GitHub 下载 fnm 二进制：$url"
+
+    local tmpzip
+    tmpzip="$(mktemp /tmp/fnm-XXXXXX.zip)"
+    if ! curl -fL --connect-timeout 15 -o "$tmpzip" "$url"; then
+        rm -f "$tmpzip"
+        return 1
+    fi
+
+    mkdir -p "$FNM_PATH"
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -o -q "$tmpzip" -d "$FNM_PATH"
+    elif command -v bsdtar >/dev/null 2>&1; then
+        bsdtar -xf "$tmpzip" -C "$FNM_PATH"
+    else
+        warn "未找到 unzip，请执行：sudo pacman -S unzip"
+        rm -f "$tmpzip"
+        return 1
+    fi
+    rm -f "$tmpzip"
+    chmod +x "$FNM_PATH/fnm"
+    [ -x "$FNM_PATH/fnm" ]
+}
+
 if [ -x "$FNM_PATH/fnm" ]; then
     info "fnm 已存在：$FNM_PATH/fnm"
 else
     info "开始安装 fnm（强制安装到 $FNM_PATH）..."
-    # 显式指定 --install-dir，避免 fnm 安装脚本按平台变化把二进制放到别处
-    # 导致 start-hermes-dashboard.sh 找不到
-    curl -fsSL https://fnm.vercel.app/install | \
-        bash -s -- --skip-shell --install-dir "$FNM_PATH"
+    # 先尝试官方安装脚本（vercel 域名，国内可能慢/超时）
+    if ! curl -fsSL --connect-timeout 15 https://fnm.vercel.app/install | \
+            bash -s -- --skip-shell --install-dir "$FNM_PATH"; then
+        warn "官方安装脚本失败（很可能是网络/fnm.vercel.app 无法访问）。"
+        warn "尝试从 GitHub Releases 直接下载..."
+        if ! install_fnm_from_github; then
+            warn "GitHub 直链也失败了。你可以："
+            warn "  1) 设置 GitHub 镜像前缀重试，例如："
+            warn "     GH_MIRROR=https://ghproxy.com/ bash install-hermes-claude.sh"
+            warn "     GH_MIRROR=https://mirror.ghproxy.com/ bash install-hermes-claude.sh"
+            warn "  2) 配置网络代理后重试"
+            err "fnm 安装失败"
+        fi
+    fi
 fi
 
 if [ -x "$FNM_PATH/fnm" ]; then
@@ -174,6 +222,7 @@ if [ -x "$FNM_PATH/fnm" ]; then
 else
     warn "fnm 二进制不在 $FNM_PATH，下面列出可能的位置："
     find "$USER_HOME" -maxdepth 5 -name fnm -type f 2>/dev/null | head -5 || true
+    err "fnm 安装异常"
 fi
 echo ""
 
