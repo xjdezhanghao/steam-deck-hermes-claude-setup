@@ -248,7 +248,12 @@ echo ""
 # ──────────────────────────────────────
 echo "=== 9. 安装 Node.js $NODE_VERSION ==="
 
-fnm install "$NODE_VERSION"
+# 先用官方源（nodejs.org/dist），失败自动切淘宝镜像
+if ! fnm install "$NODE_VERSION"; then
+    warn "官方 Node 源拉取失败，切换 npmmirror 镜像重试..."
+    export FNM_NODE_DIST_MIRROR="https://npmmirror.com/mirrors/node"
+    fnm install "$NODE_VERSION" || err "Node $NODE_VERSION 安装失败（官方源 + 镜像都失败）"
+fi
 fnm use "$NODE_VERSION"
 fnm default "$NODE_VERSION"
 
@@ -272,7 +277,32 @@ else
     info "未检测到 Hermes，开始安装。"
 fi
 
-curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup
+install_hermes_via_url() {
+    # 下到本地再跑，避免 pipe 隐藏 curl 退出码
+    local url="$1"
+    local tmp
+    tmp="$(mktemp /tmp/hermes-install-XXXXXX.sh)"
+    if ! curl -fsSL --connect-timeout 15 -o "$tmp" "$url"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    bash "$tmp" --skip-setup
+    local rc=$?
+    rm -f "$tmp"
+    return $rc
+}
+
+HERMES_RAW="https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh"
+if ! install_hermes_via_url "$HERMES_RAW"; then
+    warn "官方 raw.githubusercontent.com 拉取失败，切换镜像重试..."
+    HERMES_MIRROR="${GH_MIRROR:-https://ghproxy.com/}"
+    if ! install_hermes_via_url "${HERMES_MIRROR}${HERMES_RAW}"; then
+        # 再换一个镜像
+        if ! install_hermes_via_url "https://mirror.ghproxy.com/${HERMES_RAW}"; then
+            err "Hermes 安装脚本下载失败（官方 + 镜像都失败）。可手动设置 GH_MIRROR 后重试。"
+        fi
+    fi
+fi
 
 export PATH="$LOCAL_BIN:$PATH"
 hash -r
