@@ -295,18 +295,22 @@ echo "=== 8. 等待并检查状态 ==="
 
 sleep 3
 
-STATUS=$(systemctl --user is-active hermes-dashboard.service 2>/dev/null)
+# is-active 在服务未启动时返回非零，set -e 下不加 || true 会让脚本直接退出
+STATUS=$(systemctl --user is-active hermes-dashboard.service 2>/dev/null || true)
 if [ "$STATUS" = "active" ]; then
     info "Dashboard 运行中 → http://127.0.0.1:$DASHBOARD_PORT"
     info "点击左侧 Chat 标签即可开始对话"
 else
-    warn "Dashboard 状态: $STATUS"
+    warn "Dashboard 状态: ${STATUS:-unknown}"
     echo ""
-    echo "检查日志："
-    echo "  journalctl --user -u hermes-dashboard.service --no-pager -n 50"
+    echo "—— 最近 30 行日志 ——"
+    journalctl --user -u hermes-dashboard.service --no-pager -n 30 2>/dev/null || \
+        echo "  （无法读取 journal）"
+    echo "—————————————————"
     echo ""
     echo "手动启动测试："
     echo "  $HERMES_CMD dashboard --tui --no-open"
+    echo ""
 fi
 
 echo ""
